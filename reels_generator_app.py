@@ -22,8 +22,7 @@ input_method = st.radio("Pilih Cara Input Judul:", ["Input Teks Manual", "Genera
 
 headline = ""
 if input_method == "Input Teks Manual":
-    headline = st.text_area("Tulis Judul Highlight:", "Lore impsum dolor Lore impsum dolor
-dolor Lore impsum dolor")
+    headline = st.text_area("Tulis Judul Highlight:", "Lore impsum dolor Lore impsum dolor dolor Lore impsum dolor")
 else:
     topic = st.text_input("Masukkan Topik / Ide Konten (Cth: Review mobil listrik terbaru di GIIAS 2026):")
     if st.button("✨ Generate Judul dengan AI") and topic:
