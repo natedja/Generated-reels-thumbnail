@@ -5,22 +5,40 @@ import numpy as np
 import google.generativeai as genai
 import textwrap
 
-st.set_page_config(page_title="Iotomagz Reels Generator", page_icon="🎬", layout="centered")
+st.set_page_config(page_title="Iotomagz Reels Generator", page_icon="🎬", layout="wide")
 
 st.title("🎬 Iotomagz Reels Thumbnail Generator")
-st.markdown("Generator otomatis menggunakan template greenscreen asli Anda.")
+st.markdown("Upload gambar, generate judul, dan sesuaikan posisi teks Anda.")
 
-# --- SIDEBAR: KONFIGURASI AI ---
-st.sidebar.header("🔑 Pengaturan AI (Gemini)")
-api_key = st.sidebar.text_input("Masukkan Google Gemini API Key:", type="password")
-
-if api_key:
-    genai.configure(api_key=api_key)
+# --- SIDEBAR: KONFIGURASI AI & POSISI TEKS ---
+with st.sidebar:
+    st.header("🔑 Pengaturan AI")
+    api_key = st.text_input("Gemini API Key:", type="password")
+    if api_key:
+        genai.configure(api_key=api_key)
+        
+    st.divider()
+    
+    st.header("🛠️ Sesuaikan Posisi Judul")
+    st.markdown("Geser slider ini jika judul tidak pas di kotak hitam:")
+    
+    # SLIDER INTERAKTIF UNTUK TEKS
+    text_x = st.slider("Geser Kiri - Kanan (X)", 0, 1080, 100)
+    text_y = st.slider("Geser Atas - Bawah (Y)", 0, 1920, 1380)
+    font_size = st.slider("Ukuran Font", 20, 100, 50)
+    char_width = st.slider("Kapan teks pindah baris? (Lebar Teks)", 15, 60, 32)
+    
+    # Opsi Warna Teks
+    text_color = st.color_picker("Pilih Warna Teks", "#FFFFFF") # Default Putih
 
 # --- BAGIAN 1: INPUT GAMBAR ---
-st.subheader("1. Upload Aset Gambar")
-template_file = st.file_uploader("Upload Template (frame video ioto greenscreen.png):", type=["png", "jpg", "jpeg"])
-bg_file = st.file_uploader("Upload Foto/Footage Konten (Background):", type=["png", "jpg", "jpeg"])
+col1, col2 = st.columns(2)
+with col1:
+    st.subheader("1. Upload Aset")
+    template_file = st.file_uploader("Upload Template Greenscreen:", type=["png", "jpg", "jpeg"])
+with col2:
+    st.subheader("Background")
+    bg_file = st.file_uploader("Upload Foto/Footage (Background):", type=["png", "jpg", "jpeg"])
 
 # --- BAGIAN 2: INPUT JUDUL ---
 st.subheader("2. Teks Judul Highlight")
@@ -28,16 +46,16 @@ input_method = st.radio("Pilih Cara Input:", ["Input Manual", "AI Generate (Gemi
 
 headline = ""
 if input_method == "Input Manual":
-    headline = st.text_area("Tulis Judul Highlight:", "Lore impsum dolor\nLore impsum dolor")
+    headline = st.text_area("Tulis Judul Highlight:", "Ganti teks ini dengan\njudul konten Anda")
 else:
     topic = st.text_input("Topik (Cth: Motor sport 250cc paling irit 2026):")
     if st.button("✨ Generate Judul AI") and topic:
         if not api_key:
-            st.warning("⚠️ Masukkan Gemini API Key di sidebar!")
+            st.warning("⚠️ Masukkan Gemini API Key di sidebar sebelah kiri!")
         else:
             try:
                 model = genai.GenerativeModel('gemini-2.5-flash')
-                prompt = f"Buatkan 1 judul menarik dan singkat untuk reels otomotif: '{topic}'. Maksimal 8 kata."
+                prompt = f"Buatkan 1 judul menarik dan singkat untuk reels otomotif: '{topic}'. Maksimal 8-10 kata."
                 response = model.generate_content(prompt)
                 headline = response.text.strip().replace('"', '')
                 st.success(f"Judul AI: **{headline}**")
@@ -47,66 +65,60 @@ else:
     headline = st.text_area("Edit Judul:", headline)
 
 # --- FUNGSI PROSES GAMBAR ---
-def process_thumbnail(template_bytes, bg_bytes, text):
+def process_thumbnail(template_bytes, bg_bytes, text, x_pos, y_pos, f_size, c_width, color_hex):
     width, height = 1080, 1920
     
-    # 1. HAPUS GREENSCREEN DARI TEMPLATE
+    # 1. Hapus Greenscreen (Proses numpy)
     template_img = Image.open(template_bytes).convert("RGBA")
     template_img = template_img.resize((width, height), Image.Resampling.LANCZOS)
     
-    # Konversi ke array numpy untuk hapus warna hijau
     data = np.array(template_img)
     r, g, b, a = data[:,:,0], data[:,:,1], data[:,:,2], data[:,:,3]
-    
-    # Deteksi area hijau (Thresholding)
-    # Angka ini cocok untuk warna hijau terang pada greenscreen
+    # Deteksi area hijau 
     green_mask = (g > 150) & (r < 100) & (b < 100) 
-    data[:,:,3][green_mask] = 0 # Ubah area hijau jadi transparan (Alpha = 0)
-    
+    data[:,:,3][green_mask] = 0
     transparent_template = Image.fromarray(data)
     
-    # 2. SIAPKAN BACKGROUND KONTEN
+    # 2. Siapkan Background
     if bg_bytes:
         bg_img = Image.open(bg_bytes).convert("RGBA")
-        # Resize background agar pas layar
         bg_img = bg_img.resize((width, height), Image.Resampling.LANCZOS)
     else:
-        # Jika belum ada foto, beri warna abu-abu gelap
         bg_img = Image.new("RGBA", (width, height), (30, 30, 30, 255))
         
-    # 3. GABUNGKAN GAMBAR (Template di atas Background)
+    # 3. Gabungkan
     bg_img.paste(transparent_template, (0, 0), transparent_template)
     
-    # 4. TAMBAHKAN TEKS DI KOTAK HITAM
+    # 4. Tulis Teks Dinamis
     draw = ImageDraw.Draw(bg_img)
     try:
-        font = ImageFont.truetype("arialbd.ttf", 45) # Arial Bold jika ada
+        font = ImageFont.truetype("arialbd.ttf", f_size)
     except IOError:
         try:
-            font = ImageFont.truetype("arial.ttf", 45)
+            font = ImageFont.truetype("arial.ttf", f_size)
         except:
             font = ImageFont.load_default()
             
-    # Wrap teks agar tidak keluar dari kotak hitam (maksimal ~32 karakter per baris)
-    wrapped_text = textwrap.fill(text, width=32)
+    # Format agar pindah baris dan rata tengah
+    wrapped_text = textwrap.fill(text, width=c_width)
     
-    # Koordinat teks (disesuaikan dengan posisi kotak hitam di gambar Anda)
-    # Anda bisa mengatur ulang angka 120 (X) dan 1420 (Y) jika posisinya kurang pas
-    draw.text((120, 1420), wrapped_text, fill=(255, 255, 255, 255), font=font, spacing=15)
+    # Menggambar teks menggunakan parameter dari slider
+    draw.text((x_pos, y_pos), wrapped_text, fill=color_hex, font=font, spacing=15, align="center")
     
     return bg_img.convert("RGB")
 
 # --- TOMBOL RENDER ---
-if st.button("🚀 Render Thumbnail", type="primary"):
+if st.button("🚀 Render & Pratinjau Thumbnail", type="primary"):
     if not template_file:
-        st.error("⚠️ Mohon upload gambar template greenscreen Anda (frame video ioto greenscreen.png) terlebih dahulu!")
+        st.error("⚠️ Mohon upload gambar template Anda (frame video ioto greenscreen.png) terlebih dahulu!")
     elif not headline:
         st.warning("⚠️ Mohon isi judul konten!")
     else:
-        with st.spinner("Menghapus greenscreen dan merender gambar..."):
-            result = process_thumbnail(template_file, bg_file, headline)
+        with st.spinner("Menyatukan gambar..."):
+            # Panggil fungsi dengan mengambil nilai dari slider sidebar
+            result = process_thumbnail(template_file, bg_file, headline, text_x, text_y, font_size, char_width, text_color)
             
-            st.image(result, caption="Hasil Akhir Thumbnail Reels")
+            st.image(result, caption="Pratinjau Hasil (Gunakan slider di kiri jika posisi teks belum pas)")
             
             buf = io.BytesIO()
             result.save(buf, format="JPEG", quality=95)
