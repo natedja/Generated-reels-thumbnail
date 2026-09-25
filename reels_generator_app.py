@@ -93,8 +93,8 @@ if st.button("🚀 Render Thumbnail Reels", type="primary"):
         with st.spinner("Sedang memproses gambar..."):
             result_img = generate_thumbnail(uploaded_file, headline)
             
-            # Tampilkan hasil di UI
-            st.image(result_img, caption="Pratinjau Thumbnail Reels Instagram", use_column_width=True)
+            # Tampilkan hasil di UI (parameter use_column_width dihapus)
+            st.image(result_img, caption="Pratinjau Thumbnail Reels Instagram")
             
             # Siapkan data untuk tombol download
             buf = io.BytesIO()
